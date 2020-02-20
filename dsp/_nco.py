@@ -144,13 +144,14 @@ class Nco:
         """
         self.w = normalize_pi(w)
 
-    def adjust_freq(self, d):
-        self.w += d
-        self.w = normalize_pi(self.w)
+    def adjust_phase(self, phase_delta):
+        self.total_phase = normalize_pi(self.total_phase + phase_delta)
 
-    def __next_phase(self):
-        self.total_phase += self.w
-        self.total_phase = normalize_pi(self.total_phase)
+    def adjust_freq(self, freq_delta):
+        self.w = normalize_pi(self.w + freq_delta)
+
+    def next_phase(self):
+        self.total_phase = normalize_pi(self.total_phase + self.w)
         return self.total_phase
 
     def next(self, num=1):
@@ -160,13 +161,13 @@ class Nco:
         """
         if num == 1:
             iq = self.iq()
-            self.__next_phase()
+            self.next_phase()
             return iq
         else:
             samples = collections.deque()
             while len(samples) < num:
                 samples.append(self.iq())
-                self.__next_phase()
+                self.next_phase()
 
             return samples
 
@@ -177,13 +178,13 @@ class Nco:
         """
         if num == 1:
             iq = self.iq()
-            self.__next_phase()
+            self.next_phase()
             return iq.imag
         else:
             samples = collections.deque()
             while len(samples) < num:
                 samples.append(self.iq().imag)
-                self.__next_phase()
+                self.next_phase()
 
             return samples
 
@@ -194,13 +195,13 @@ class Nco:
         """
         if num == 1:
             iq = self.iq()
-            self.__next_phase()
+            self.next_phase()
             return iq.real
         else:
             samples = collections.deque()
             while len(samples) < num:
                 samples.append(self.iq().real)
-                self.__next_phase()
+                self.next_phase()
 
             return samples
 
@@ -218,8 +219,4 @@ class Nco:
         """
 
         return complex(math.cos(self.total_phase), math.sin(self.total_phase))
-
-    def adjust_phase(self, phase_delta):
-        self.total_phase += phase_delta
-        self.total_phase = normalize_pi(self.total_phase)
 
