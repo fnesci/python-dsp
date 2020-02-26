@@ -24,10 +24,10 @@ class HbUpsampler:
         if hb_type == 1:
             M -= 1
 
-        self.compressed_filter = [0] * M
+        self.compressed_filter = [0] * (M - 1)
 
         m0 = 0
-        m1 = M - 1
+        m1 = M - 2
         for l in range(L):
             if not zero:
                 self.compressed_filter[m0] = hb_filter[l]
@@ -36,6 +36,67 @@ class HbUpsampler:
                 m1 -= 1
             zero = not zero
 
-        assert(m0 == m1)
-        self.compressed_filter[m0] = hb_filter[L]
-        pass
+        self.sample_to_scale = L
+        self.sample_scale = hb_filter[L]
+
+        self.__N = len(self.compressed_filter)
+        self.__N_minus_1 = self.__N - 1
+        self.__history = [0] * self.__N
+        self.__head = 0
+        self.__scaled_sample_index = self.__N // 2
+
+    """
+    x3      b0
+    0       0
+    x2      b2
+    0       b3
+    x1      b4
+    0       0
+    x0      b6
+
+    push 0      
+
+    0       b0
+    x3      0
+    0       b2
+    x2      b3
+    0       b4
+    x1      0
+    0       b6
+
+    push X4
+    x4      b0
+    0       0
+    x3      b2
+    0       b3
+    x2      b4
+    0       0
+    x1      b6
+
+    """
+
+    def block_next(self, xs, ys):
+        for x in xs:
+            self.__history[self.__head] = x
+
+            y = 0.0
+            k = 0
+            for i in range(self.__head, self.__N):
+                y += self.compressed_filter[k] * self.__history[i]
+                k +=1
+
+            for i in range(0, self.__head):
+                y += self.compressed_filter[k] * self.__history[i]
+                k +=1
+
+            self.__head -= 1
+            if self.__head < 0:
+                self.__head = self.__N_minus_1
+
+            self.__scaled_sample_index -= 1
+            if self.__scaled_sample_index < 0:
+                self.__scaled_sample_index = self.__N_minus_1
+
+            ys.append(y)
+            ys.append(self.sample_scale * self.__history[self.__scaled_sample_index])
+
