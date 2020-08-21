@@ -1,102 +1,90 @@
 import collections
-from constants import _2pi, _pi
 import math
 import numpy
 
-# class FilterTable:
-#     class TableEntry:
-#         def __init__(self, x, y0, y1):
-#             self.x = x
-#             self.y = y0
-#             self.delta = y1 - y0
-#
-#     def __init__(self, f, num_zero_crossings, entries_per_zero_crossing):
-#         self.f = f
-#         self.entries_per_zero_crossing = entries_per_zero_crossing
-#         self.max_x = float(num_zero_crossings)
-#         self.num_entries = int(num_zero_crossings * entries_per_zero_crossing)
-#         self.step_size = self.max_x / (self.num_entries - 1.0)
-#         self.entries = []
-#         self.current_index = None
-#         self.current_index_frac = None
-#
-#         for i in range(self.num_entries + 1):
-#             x0 = i * self.max_x / self.num_entries
-#             x1 = (i + 1) * self.max_x / self.num_entries
-#             self.entries.append(SincResampler.FilterTable.TableEntry(x0, self.f(x0), self.f(x1)))
-#
-#     def set_inital_position(self, inital_crossing, offset):
-#         # self.current_index = int(math.floor((inital_crossing + offset) * self.entries_per_zero_crossing))
-#         # oe = offset * self.entries_per_zero_crossing
-#         # mf = math.modf(offset * self.entries_per_zero_crossing)
-#         # self.current_index_frac = mf[0]
-#         l = (inital_crossing + offset) * self.entries_per_zero_crossing
-#         mf = math.modf(l)
-#         self.current_index = int(mf[1])
-#         self.current_index_frac = mf[0]
-#         pass
-#
-#     def eval(self):
-#         e = self.entries[self.current_index]
-#         return e.y + e.delta * self.current_index_frac
-#
-#     def next(self):
-#         self.current_index += self.entries_per_zero_crossing
-#
-#     def prev(self):
-#         self.current_index -= self.entries_per_zero_crossing
+class FilterTable:
+    class TableEntry:
+        def __init__(self, x, y0, y1):
+            self.x = x
+            self.y = y0
+            self.delta = y1 - y0
+
+    def __init__(self, f, num_zero_crossings, entries_per_zero_crossing):
+        self.f = f
+        self.entries_per_zero_crossing = entries_per_zero_crossing
+        self.max_x = float(num_zero_crossings)
+        self.num_entries = int(num_zero_crossings * entries_per_zero_crossing)
+        self.step_size = self.max_x / (self.num_entries - 1.0)
+        self.entries = []
+        self.current_index = None
+        self.current_index_frac = None
+
+        for i in range(self.num_entries + 1):
+            x0 = i * self.max_x / self.num_entries
+            x1 = (i + 1) * self.max_x / self.num_entries
+            self.entries.append(SincResampler.FilterTable.TableEntry(x0, self.f(x0), self.f(x1)))
+
+    def set_inital_position(self, inital_crossing, offset):
+        # self.current_index = int(math.floor((inital_crossing + offset) * self.entries_per_zero_crossing))
+        # oe = offset * self.entries_per_zero_crossing
+        # mf = math.modf(offset * self.entries_per_zero_crossing)
+        # self.current_index_frac = mf[0]
+        l = (inital_crossing + offset) * self.entries_per_zero_crossing
+        mf = math.modf(l)
+        self.current_index = int(mf[1])
+        self.current_index_frac = mf[0]
+        pass
+
+    def eval(self):
+        e = self.entries[self.current_index]
+        return e.y + e.delta * self.current_index_frac
+
+    def next(self):
+        self.current_index += self.entries_per_zero_crossing
+
+    def prev(self):
+        self.current_index -= self.entries_per_zero_crossing
 
 
-class SincResampler:
+class Resampler:
     @staticmethod
-    def create_filter_function(N, wf, w_co):
+    def create_filter_function(N, w, w_co):
         assert N & 1 == 1
         _N = float(N)
-        shift = math.floor(0.5 * _N)
-        w = wf(N)
-
-        sinc_gain = 2.0 * min(1.0, w_co  / _2pi)
-        sinc_freq = 2.0 * min(1.0, w_co / _2pi)
-
-        h = lambda n : w(n + shift) * sinc_gain * numpy.sinc(sinc_freq * (n)) \
-            if -shift <= n < shift else 0.0
-
-        return h
+        p = float(w_co) / (2.0 * math.pi)
+        h = lambda n: w(n) * numpy.sinc(p * (n - _N + 1.0))
+        pass
 
     def __init__(self, resample_ratio, cutoff_freq, filter_length, window_generator, use_table_function = False):
         self.resample_ratio = float(resample_ratio)
         self.w_co = float(cutoff_freq)
-        self.sinc_gain = min(1.0, self.resample_ratio)
-        self.sinc_freq = min(1.0, self.resample_ratio)
 
         # The filter length should be odd
-        self.filter_length = 2 * int(filter_length // 2) + 1
+        self.filter_length = 2 * int(filter_length / 2) + 1
         # Create the window for the filter
-        self.window_function  = window_generator
-        self.filter = SincResampler.create_filter_function(self.filter_length, self.window_function, self.w_co)
+        self.window_function  = window_generator(self.filter_length)
+        self.filter = Resampler.create_filter_function(self.filter_length, self.window_function, )
         self.use_table_function = use_table_function
 
-        self.right_len = self.filter_length // 2 + 1
-        self.left_len = self.filter_length // 2
+        self.right_len = self.filter_length / 2 + 1
+        self.left_len = self.filter_length / 2
         self.samples = collections.deque()
         self.output_sample_step_size = 1.0 / self.resample_ratio
         self.next_resample_available = float(self.filter_length) - 1.0
 
         # generate the resample filter
+        self.filter = None
         if self.use_table_function:
             # Generate
             pass
-            assert False
         else:
-            pass
-
-    def get_filter(self):
-        f = []
-        offset = math.floor(0.5 * self.filter_length)
-        for n in range(self.filter_length):
-            f.append(self.filter(n - offset))
-
-        return f
+            
+        self.filter =
+        self.sinc_gain = min(1.0, self.resample_ratio)
+        self.sinc_freq = min(1.0, self.resample_ratio)
+        self.table = SincResampler.FilterTable(self.h, num_zero_crossings, table_entries_per_zero_crossing)
+        self.use_table_function = False
+        self.use_table_function = True
 
     def h(self, n):
         f = self.sinc_freq * n
@@ -129,29 +117,20 @@ class SincResampler:
             delta, last_index = math.modf(self.next_resample_available)
 
             if not self.use_table_function:
-                # Right wing
-                # (left_len, -1]
                 p = 0
-                h_index = delta
-                s_index = int(last_index) - self.right_len + 1
-                for i in range(self.right_len):
-                    #print("{} {} {:8.4}".format(s_index, h_index, self.filter(h_index)))
-                    p += self.filter(h_index) * self.samples[s_index]
-                    s_index += 1
-                    h_index += 1.0
-
-                # Left wing
-                # [0, right_len)
-                h_index = -delta - 1.0
-                s_index = int(last_index) - self.right_len
-                q = 0
+                sample_index = int(last_index) - self.right_len
                 for i in range(self.left_len):
-                    #print("{} {} {:8.4}".format(s_index, h_index, self.filter(h_index)))
-                    q += self.filter(h_index) * self.samples[s_index]
-                    s_index -= 1
-                    h_index -= 1.0
+                    #print "b{} {} {:8.4} {:8.4}".format(sample_index, i + delta, self.s(i + delta), self.w(i + delta))
+                    p += self.h(i + delta) * self.samples[sample_index]
+                    sample_index -= 1
+
+                sample_index = int(last_index) - self.right_len + 1
+                q = 0
+                for i in range(0, self.right_len):
+                    #print "{} {} {:8.4} {:8.4}".format(sample_index, i - delta + 1.0, self.s(i - delta + 1.0), self.w(i - delta + 1.0))
+                    q += self.h(i - delta + 1.0) * self.samples[sample_index]
+                    sample_index += 1
             else:
-                assert False
                 p = 0.0
 
                 zero_crossing = self.num_zero_crossings
@@ -190,10 +169,3 @@ class SincResampler:
                 self.samples.popleft()
 
         return resamples
-
-
-class CompositeResampler:
-    def __init__(self, resample_ratio, cutoff_freq, filter_length, window_generator, use_table_function = False):
-        self.resample_ratio = resample_ratio
-        self.half_band_stages = int(math.log2(resample_ratio))
-        self.sinc_resample_ratio = resample_ratio * math.pow(2.0, -self.half_band_stages)
