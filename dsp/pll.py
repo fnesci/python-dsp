@@ -3,6 +3,9 @@ import collections
 import cmath
 import fir_filter
 import helpers
+import math
+import dsp
+
 
 class Pll:
     default_loop_filter = [
@@ -28,8 +31,14 @@ class Pll:
     @staticmethod
     def default_phase_detector(x, w):
         y = x * (w.real - 1j * w.imag)
+        #y = w * (x.real - 1j * x.imag)
         return cmath.phase(y)
-        #return y.imag
+        # phase = cmath.phase(x) - cmath.phase(w)
+        # if phase <= -math.pi:
+        #     phase += 2.0 * math.pi
+        # elif phase > math.pi:
+        #     phase -= 2.0 * math.pi
+        # return phase
 
     def __init__(self, phase_detector, phase_gain, freq_gain, loop_filter, w = 0):
         self.phase_detector = phase_detector
@@ -46,17 +55,35 @@ class Pll:
         output = collections.deque()
 
         for x in input:
-            w_history.append(self.nco.w)
-            o = self.nco.next()
-            output.append(o)
-            error = self.phase_detector(x, o)
+            # w_history.append(self.nco.w)
+            # o = self.nco.next()
+            # output.append(o)
+            # error = self.phase_detector(x, o)
+            # error_history.append(error)
+            # error = self.loop_filter.next(error)
+            # filtered_error_history.append(error)
+            # phase_error = self.phase_gain * error
+            # freq_error = self.freq_gain * error
+            # self.nco.adjust_phase(phase_error)
+            # self.nco.adjust_freq(freq_error)
+            w = self.nco.w
+            p = self.nco.phase()
+            iq = self.nco.iq()
+
+            w_history.append(w)
+            output.append(iq)
+
+            error2 = self.phase_detector(x, iq)
+            error = dsp.normalize_pi(cmath.phase(x) - p)
             error_history.append(error)
             error = self.loop_filter.next(error)
             filtered_error_history.append(error)
+
             phase_error = self.phase_gain * error
             freq_error = self.freq_gain * error
             self.nco.adjust_phase(phase_error)
             self.nco.adjust_freq(freq_error)
+            self.nco.next_phase()
 
         return output, filtered_error_history, error_history, w_history
 
